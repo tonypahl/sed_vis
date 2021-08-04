@@ -1,0 +1,31 @@
+# First column gives the filter name/  The second column
+# tells which filters you want to use (1=use,0=do not use).
+# Note that filters will not be used if they have a peak 
+# wavelength that lies below the Lyman break or extend beyond
+# the wavelength range of the model spectrum, regardless of
+# whether you pick 0 or 1 for such a filter.  Third column
+# says whether the filter magnitude is in AB (=0) or Vega (=1) units.
+# The program will convert automatically the Vega mags to AB.
+# The fourth column says whether this is a magnitude (=0)
+# or a color (=1).  If it is a color, then the fifth column
+# says it is a color with respect to which other filter.  For
+# example, if the "Un" row below corresponds to an input
+# (U-G) color in the photometry file, then the fifth column
+# will have "G."  If, the color is (G-U), then the fifth column
+# will be "mG."
+#
+#
+#
+U_cfht     1   0   0    0
+G_cfht     1   0   0    0
+R_cfht     1   0   0    0
+I_cfht     1   0   0    0
+Z_cfht     1   0   0    0
+J_wircam   1   0   0    0
+H_wircam   1   0   0    0
+Ks_wircam  1   0   0    0
+irac1      1   0   0    0
+irac2      1   0   0    0
+f606w      1   0   0    0
+f125w      1   0   0    0
+f160w      1   0   0    0
