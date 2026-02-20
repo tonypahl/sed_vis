@@ -1,6 +1,7 @@
 channels:
   - http://ssb.stsci.edu/astroconda
   - defaults
+  - conda-forge
 dependencies:
   - python=3.10
   - numpy=1.26.3
