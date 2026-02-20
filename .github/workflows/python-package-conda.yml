@@ -22,7 +22,8 @@ jobs:
       run: |
         conda env update --file environment.yaml --name base
     - name: Set PYTHONPATH	
-      run: export PYTHONPATH=$PWD
+      run: |
+        export PYTHONPATH=$PWD
     - name: Lint with flake8
       run: |
         conda install flake8
