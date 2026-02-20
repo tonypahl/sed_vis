@@ -12,6 +12,11 @@ import math
 from scipy import interpolate
 import glob
 
+SFH_LABELS = {
+    "csf_": "Constant SFH",
+    "tau_": "Tau model",
+    "taur_": "Tau rising model",
+}
 
 def read_bestfit_params(sum_file, ids):
 
@@ -66,7 +71,7 @@ def reformat_obs_phot(phot_series, filt_dir):
     ws = []
     ms = []
     ems = []
-    for fn, vn in phot_series.iteritems():
+    for fn, vn in phot_series.items():
         if "_mag" in fn:
             ms.append(vn)
             ws.append(
@@ -137,6 +142,71 @@ def find_nearest(array, value):
         return idx
 
 
+def get_bestfit_sed(res_dir, obj_id, sfh_age):
+    path = f"{res_dir}/bestfit/bestfit.{obj_id}.{sfh_age}.dat"
+    if not os.path.isfile(path):
+        return None
+    psed = ascii.read(path).to_pandas()
+    psed.columns = ["wave", "flam"]
+    flam = psed.flam.values * u.erg / u.s / u.cm ** 2 / u.AA
+    lam = psed.wave.values * u.AA
+    fnu = flam.to(u.erg / u.s / u.cm ** 2 / u.Hz, u.spectral_density(lam))
+    abmag = fnu.to(u.ABmag)
+    psed["fnu"] = fnu.value
+    psed["ABmag"] = abmag.value
+    # convert wavelength to microns
+    mlam = lam.to(u.micron)
+    psed["wave_um"] = mlam.value
+    return psed
+
+
+def compute_label_position(ax, fr):
+    if np.isnan(fr.mag):
+        return None, None
+    # Define upper and lower possible positions
+    if fr.mag > fr.bmag:
+        if np.isnan(fr.emag):
+            lpos = fr.mag + 0.1
+        else:
+            lpos = fr.mag + fr.emag + 0.1
+        upos = fr.bmag - 0.1
+    else:
+        if np.isnan(fr.emag):
+            upos = fr.mag - 0.1
+        else:
+            upos = fr.mag - fr.emag - 0.1
+        lpos = fr.bmag + 0.1
+    upos_ax = ax.transLimits.transform([fr.wave, upos])
+    lpos_ax = ax.transLimits.transform([fr.wave, lpos])
+    # Check if going above or below the figure
+    if upos_ax[1] > 0.87:
+        pos = lpos
+        va = "top"
+    elif lpos_ax[1] < 0.13:
+        pos = upos
+        va = "bottom"
+    else:
+        if fr.mag > fr.bmag:
+            pos = lpos
+            va = "top"
+        else:
+            pos = upos
+            va = "bottom"
+    return pos, va
+
+def decode_sfh_age(sfh_age):
+    sfh = next(
+        (label for key, label in SFH_LABELS.items() if key in sfh_age),
+        sfh_age.split("_")[0]
+        )
+    age = (
+        "All ages" if "allage" in sfh_age
+        else r"Age $>$ 50Myr" if "agegt50" in sfh_age
+        else sfh_age.split("_")[1]
+        )
+    return [sfh, age]
+
+
 def sed_vis(phot_in, filt_file, res_dir, filt_dir, sfh_ages=None):
     """
     Plots best-fit SEDs from Naveen Reddy's SED Fitting software.
@@ -150,6 +220,8 @@ def sed_vis(phot_in, filt_file, res_dir, filt_dir, sfh_ages=None):
     Optional parameters:
           sfh_ages (list or str):  Specific SFH/age fits to plot (i.e "csf_allage"). If none
                                    supplied, defaults to plotting all found in res_dir.
+
+    Generates plots in res_dir/plots/*.pdf
     """
 
     colors = np.array(
@@ -178,7 +250,7 @@ def sed_vis(phot_in, filt_file, res_dir, filt_dir, sfh_ages=None):
     # Construct array of input summary files
     if sfh_ages is None:
         sum_files = glob.glob("{}/summary_*.dat".format(res_dir))
-    elif type(sfh_ages) == list:
+    elif type(sfh_ages) is list:
         sum_files = [
             "{}/summary_{}.dat".format(res_dir, sfh_age) for sfh_age in sfh_ages
         ]
@@ -209,9 +281,9 @@ def sed_vis(phot_in, filt_file, res_dir, filt_dir, sfh_ages=None):
         # Generate one PDF per SED fit
         for i, r in pbst.iterrows():
             # Read in best fit SED
-            sed_best_file = "{}/bestfit/bestfit.{}.{}.dat".format(res_dir, i, sfh_age)
-            if not os.path.isfile(sed_best_file):
-                print("Not found: bestfit.{}.{}.dat".format(i, sfh_age))
+            psed = get_bestfit_sed(res_dir, i, sfh_age)
+            if psed is None:
+                print(f"Not found: bestfit.{i}.{sfh_age}.dat")
                 continue
 
             # Instantiate figure
@@ -219,22 +291,6 @@ def sed_vis(phot_in, filt_file, res_dir, filt_dir, sfh_ages=None):
             ax = fig.add_subplot(111)
 
             # Plot best fit SED
-            sed_best_file = "{}/bestfit/bestfit.{}.{}.dat".format(res_dir, i, sfh_age)
-            if not os.path.isfile(sed_best_file):
-                print("Not found: bestfit.{}.{}.dat".format(i, sfh_age))
-                continue
-            psed = ascii.read(sed_best_file).to_pandas()
-            psed.columns = ["wave", "flam"]
-            # Unit conversion from F_lambda (erg/s/cm2/AA) to F_nu (erg/s/cm2/Hz) to  AB magnitude
-            flam = psed.flam.values * u.erg / u.s / u.cm ** 2 / u.AA
-            lam = psed.wave.values * u.AA
-            fnu = flam.to(u.erg / u.s / u.cm ** 2 / u.Hz, u.spectral_density(lam))
-            abmag = fnu.to(u.ABmag)
-            psed["fnu"] = fnu.value
-            psed["ABmag"] = abmag.value
-            # convert wavelength to microns
-            mlam = lam.to(u.micron)
-            psed["wave_um"] = mlam.value
             ax.plot(
                 psed.wave_um,
                 psed.ABmag,
@@ -318,38 +374,9 @@ def sed_vis(phot_in, filt_file, res_dir, filt_dir, sfh_ages=None):
 
             # Label observed photometry
             for fi, fr in pobs.iterrows():
-                # Skip if no magnitude in this band
-                if np.isnan(fr.mag):
+                pos, va = compute_label_position(ax, fr)
+                if pos is None:
                     continue
-                # Define upper and lower possible positions
-                if fr.mag > fr.bmag:
-                    if np.isnan(fr.emag):
-                        lpos = fr.mag + 0.1
-                    else:
-                        lpos = fr.mag + fr.emag + 0.1
-                    upos = fr.bmag - 0.1
-                else:
-                    if np.isnan(fr.emag):
-                        upos = fr.mag - 0.1
-                    else:
-                        upos = fr.mag - fr.emag - 0.1
-                    lpos = fr.bmag + 0.1
-                upos_ax = ax.transLimits.transform([fr.wave, upos])
-                lpos_ax = ax.transLimits.transform([fr.wave, lpos])
-                # Check if going above or below the figure
-                if upos_ax[1] > 0.87:
-                    pos = lpos
-                    va = "top"
-                elif lpos_ax[1] < 0.13:
-                    pos = upos
-                    va = "bottom"
-                else:
-                    if fr.mag > fr.bmag:
-                        pos = lpos
-                        va = "top"
-                    else:
-                        pos = upos
-                        va = "bottom"
                 ax.text(
                     fr.wave,
                     pos,
@@ -369,21 +396,7 @@ def sed_vis(phot_in, filt_file, res_dir, filt_dir, sfh_ages=None):
             ax.legend(loc="upper left", fontsize=14)
 
             # Best-fit parameters
-            sfh_age_str = []
-            if "csf_" in sfh_age:
-                sfh_age_str.append("Constant SFH")
-            elif "tau_" in sfh_age:
-                sfh_age_str.append("Tau model")
-            elif "taur_" in sfh_age:
-                sfh_age_str.append("Tau rising model")
-            else:
-                sfh_age_str.append(sfh_age.split("_")[0])
-            if "allage" in sfh_age:
-                sfh_age_str.append("All ages")
-            elif "agegt50" in sfh_age:
-                sfh_age_str.append(r"Age $>$ 50Myr")
-            else:
-                sfh_age_str.append(sfh_age.split("_")[1])
+            sfh_age_str = decode_sfh_age(sfh_age)
             fit_info = [
                 *sfh_age_str,
                 r"$\tau$/Myr:    {}".format(r.tau),
